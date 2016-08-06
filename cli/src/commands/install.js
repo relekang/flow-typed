@@ -61,11 +61,23 @@ export async function run(args: Args): Promise<number> {
   if (/^v[0-9]+\.[0-9]+$/.test(flowVersionStr)) {
     flowVersionStr = `${flowVersionStr}.0`;
   }
+
+
+  return downloadLibraryDefinition({
+    packageVersion: args._[1],
+    flowVersionStr,
+    overwrite: args.overwrite,
+  });
+}
+
+async function downloadLibraryDefinition({
+  packageVersion,
+  flowVersionStr,
+  overwrite,
+}) {
   const flowVersion = stringToVersion(flowVersionStr);
 
-  const term = args._[1];
-
-  const matches = term.match(/([^@]*)@?(.*)?/);
+  const matches = packageVersion.match(/([^@]*)@?(.*)?/);
   const defName = (matches && matches[1]);
   const defVersion = (matches && matches[2]) || 'auto';
 
@@ -110,7 +122,7 @@ export async function run(args: Args): Promise<number> {
 
   if (filtered.length === 0) {
     return failWithMessage(
-      `Sorry, I was unable to find any libdefs for ${term} that work with ` +
+      `Sorry, I was unable to find any libdefs for ${packageVersion} that work with ` +
       `flow@${flowVersionStr}. Consider submitting one! :)\n\n` +
       `https://github.com/flowtype/flow-typed/`
     );
@@ -142,7 +154,7 @@ export async function run(args: Args): Promise<number> {
   const targetFilePath = path.join(flowTypedDir, targetFileName);
 
   const terseTargetFile = path.relative(process.cwd(), targetFilePath);
-  if ((await fs.exists(targetFilePath)) && !args.overwrite) {
+  if ((await fs.exists(targetFilePath)) && !overwrite) {
     console.log(
       `${terseTargetFile} already exists! Use --overwrite/-o to overwrite the ` +
       `existing libdef.`
