@@ -5,6 +5,7 @@ import {copyFile, mkdirp, searchUpDirPath} from "../lib/fileUtils.js";
 import {filterLibDefs, getCacheLibDefs, getCacheLibDefVersion} from "../lib/libDefs.js";
 import {fs, path} from '../lib/node.js';
 import {emptyVersion, stringToVersion, versionToString} from "../lib/semver.js";
+import {getListOfDependencies} from '../lib/packageUtils';
 
 export const name = 'install';
 export const description = 'Installs a libdef to the ./flow-typed directory';
@@ -13,6 +14,10 @@ export function setup(yargs: Object) {
   return yargs
     .usage(`$0 ${name} - ${description}`)
     .options({
+      all: {
+        describe: 'Install type definitions for all packages in package.json',
+        type: 'bool',
+      },
       flowVersion: {
         alias: 'f',
         demand: true,
@@ -41,9 +46,10 @@ type Args = {
 };
 
 export async function run(args: Args): Promise<number> {
-  if (args._ == null || !(args._.length > 1)) {
+  if ((args._ == null || !(args._.length > 1)) && !args.all) {
     return failWithMessage(
-      'Please provide a libdef name (example: lodash, or lodash@4.2.1)'
+      'Please provide a libdef name (example: lodash, or lodash@4.2.1) ' +
+      'or use --all to install all availble libdefs for your dependencies'
     );
   }
 
@@ -62,12 +68,26 @@ export async function run(args: Args): Promise<number> {
     flowVersionStr = `${flowVersionStr}.0`;
   }
 
+  if (args.all) {
+    const packages = getListOfDependencies();
+    return Promise.all(packages.map(packageVersion => {
+      console.log(`Downloading libdef for ${packageVersion}`);
+      return downloadLibraryDefinition({
+        flowVersionStr,
+        overwrite: args.overwrite,
+        packageVersion,
+      });
+    }))
+    .then(() => 0)
+    .catch(error => failWithMessage(error.message));
+  }
 
   return downloadLibraryDefinition({
-    packageVersion: args._[1],
     flowVersionStr,
     overwrite: args.overwrite,
-  });
+    packageVersion: args._[1],
+  })
+  .catch(error => failWithMessage(error.message));
 }
 
 async function downloadLibraryDefinition({
@@ -82,7 +102,7 @@ async function downloadLibraryDefinition({
   const defVersion = (matches && matches[2]) || 'auto';
 
   if (!defName) {
-    return failWithMessage(
+    throw new Error(
       "Please specify a package name of the format `PackageFoo` or " +
       "PackageFoo@0.2.2"
     );
@@ -121,7 +141,7 @@ async function downloadLibraryDefinition({
   const filtered = filterLibDefs(defs, filter);
 
   if (filtered.length === 0) {
-    return failWithMessage(
+    throw new Error(
       `Sorry, I was unable to find any libdefs for ${packageVersion} that work with ` +
       `flow@${flowVersionStr}. Consider submitting one! :)\n\n` +
       `https://github.com/flowtype/flow-typed/`
@@ -142,7 +162,7 @@ async function downloadLibraryDefinition({
     }
   });
   if (projectRoot === null) {
-    return failWithMessage(
+    throw new Error(
       `\nERROR: Unable to find a flow project in the currend dir or any of ` +
       `it's parents!\nPlease run this command from within a Flow project.`
     );
